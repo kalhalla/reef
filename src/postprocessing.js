@@ -6,17 +6,17 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 
 // Underwater grade.
-// - Lifts shadows toward a teal tint (uTint) by an adjustable amount (uTintAmount)
-// - Pushes overall hue subtly cyan-green
+// - Lifts only the deepest shadows toward a teal tint (previously ate too much mid-tone)
+// - Tiny channel push toward cyan-green
 // - Radial vignette
-// - Tiny temporal grain so flat areas don't band
+// - Dithered grain so flat areas don't band
 
 const UnderwaterShader = {
   uniforms: {
     tDiffuse:    { value: null },
     uTint:       { value: new THREE.Color('#5fb8c9') },
-    uTintAmount: { value: 0.16 },
-    uVignette:   { value: 0.95 },
+    uTintAmount: { value: 0.08 },
+    uVignette:   { value: 0.85 },
     uTime:       { value: 0 },
   },
   vertexShader: /* glsl */ `
@@ -38,15 +38,16 @@ const UnderwaterShader = {
       vec4 src = texture2D(tDiffuse, vUv);
       vec3 col = src.rgb;
 
-      // shadow-aware tint: tint lives in the darks, lets highlights through
+      // shadow-aware tint: the tint only touches deep shadows now,
+      // letting mid-tones and coral colours through unmolested
       float lum = dot(col, vec3(0.299, 0.587, 0.114));
-      vec3  lift = mix(uTint, vec3(1.0), smoothstep(0.0, 0.55, lum));
+      vec3  lift = mix(uTint, vec3(1.0), smoothstep(0.15, 0.7, lum));
       col = mix(col, col * lift, uTintAmount);
 
-      // gentle channel push toward cyan-green
-      col.r *= 0.96;
-      col.g *= 1.02;
-      col.b *= 1.05;
+      // very gentle channel push toward cyan-green
+      col.r *= 0.98;
+      col.g *= 1.01;
+      col.b *= 1.03;
 
       // radial vignette
       vec2 q = vUv - 0.5;

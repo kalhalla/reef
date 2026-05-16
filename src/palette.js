@@ -8,10 +8,15 @@ export const palette = {
   deepWater:  new THREE.Color('#0a3d4a'),
   fog:        new THREE.Color('#1a6478'),
 
+  // sky gradient (skydome)
+  skyTop:     new THREE.Color('#7fcad8'),
+  skyDeep:    new THREE.Color('#082530'),
+
   // lighting
   sun:        new THREE.Color('#fff2d6'),
   skyHemi:    new THREE.Color('#9fd8e8'),
   groundHemi: new THREE.Color('#3a2a1a'),
+  fillWarm:   new THREE.Color('#ffb088'),
 
   // seabed
   sandBase:   new THREE.Color('#d4a06b'),

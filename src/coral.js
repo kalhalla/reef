@@ -2,49 +2,74 @@ import * as THREE from 'three';
 import { palette, config } from './palette.js';
 
 // Phase 1 placeholder coral.
-// A recursive branching plan is generated up front, sorted bottom-up,
-// then each voxel scales in from zero over the growth window with
-// a small overshoot ease. DLA replaces this in Phase 2.
+// Generates a recursive branching skeleton (trunk + side branches),
+// then runs a thickening pass that clusters voxels around low-depth,
+// low-height segments. Result: bulbous base, tapering tips.
+// DLA replaces this in Phase 2.
 
 function planCoral() {
   const segments = [];
   const seen = new Set();
   const key = (x, y, z) => `${x},${y},${z}`;
 
-  function add(x, y, z) {
+  function add(x, y, z, depth) {
     if (y < 0 || y > config.reefMaxHeight) return false;
     const k = key(x, y, z);
     if (seen.has(k)) return false;
     seen.add(k);
-    segments.push({ x, y, z });
+    segments.push({ x, y, z, depth });
     return true;
   }
 
-  const sideDirs = [
-    [ 1, 0,  0], [-1, 0,  0], [ 0, 0,  1], [ 0, 0, -1],
-    [ 1, 1,  0], [-1, 1,  0], [ 0, 1,  1], [ 0, 1, -1],
-  ];
+  // Horizontal-only directions, used for branches starting off the trunk.
+  // Diagonal-up directions are reserved for established branches reaching for light.
+  const horizDirs = [[ 1, 0,  0], [-1, 0,  0], [ 0, 0,  1], [ 0, 0, -1]];
+  const diagDirs  = [[ 1, 1,  0], [-1, 1,  0], [ 0, 1,  1], [ 0, 1, -1]];
 
   function grow(x, y, z, dx, dy, dz, life, depth) {
     if (life <= 0 || depth > 4) return;
     const nx = x + dx, ny = y + dy, nz = z + dz;
-    if (!add(nx, ny, nz)) return;
+    if (!add(nx, ny, nz, depth)) return;
 
-    // side branch
-    const branchChance = 0.18 + depth * 0.04;
-    if (Math.random() < branchChance) {
-      const d = sideDirs[Math.floor(Math.random() * sideDirs.length)];
+    // Trunk branches readily; deeper branches less so.
+    const branchChance = depth === 0 ? 0.35 : 0.22 + depth * 0.05;
+    if (Math.random() < branchChance && depth < 4) {
+      // Trunk only spawns horizontal side branches.
+      // Deeper recursion may angle upward.
+      const dirs = depth === 0
+        ? horizDirs
+        : (Math.random() < 0.55 ? horizDirs : diagDirs);
+      const d = dirs[Math.floor(Math.random() * dirs.length)];
       grow(nx, ny, nz, d[0], d[1], d[2], 3 + Math.floor(Math.random() * 3), depth + 1);
     }
 
-    // continue, with a mild upward bias on non-vertical branches
+    // Continue in same direction. Horizontal branches drift upward occasionally.
     let cdy = dy;
-    if (cdy < 1 && Math.random() < 0.35) cdy = 1;
+    if (depth >= 1 && cdy === 0 && Math.random() < 0.3) cdy = 1;
     grow(nx, ny, nz, dx, cdy, dz, life - 1, depth);
   }
 
-  add(0, 0, 0);
-  grow(0, 0, 0, 0, 1, 0, 6 + Math.floor(Math.random() * 4), 0);
+  add(0, 0, 0, 0);
+  grow(0, 0, 0, 0, 1, 0, 5 + Math.floor(Math.random() * 4), 0);
+
+  // Thickening pass: cluster horizontal neighbours around low-depth, low-height
+  // segments so the base reads as bulbous and the tips stay thin.
+  const horiz = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1]];
+  const orig = [...segments];
+  for (const s of orig) {
+    const heightFactor = Math.max(0, 1 - s.y / 6);
+    const depthFactor  = Math.max(0, 1 - s.depth * 0.3);
+    const thickChance  = 0.6 * heightFactor * depthFactor;
+    if (Math.random() < thickChance) {
+      const d = horiz[Math.floor(Math.random() * horiz.length)];
+      add(s.x + d[0], s.y + d[1], s.z + d[2], s.depth + 1);
+      if (Math.random() < thickChance * 0.5) {
+        const d2 = horiz[Math.floor(Math.random() * horiz.length)];
+        add(s.x + d2[0], s.y + d2[1], s.z + d2[2], s.depth + 1);
+      }
+    }
+  }
+
   return segments;
 }
 
@@ -73,7 +98,7 @@ export class Coral {
       s.bloomWindow = 0.18;                  // each cube blooms over this slice of total time
       s.lastScale = -1;
 
-      // colour: drift from coral base near the seabed to coral tip up high
+      // colour drift: coral base near the seabed → coral tip up high
       const heightT = Math.min(1, s.y / 8);
       const c = palette.coralBase.clone().lerp(palette.coralTip, heightT * 0.65);
       c.offsetHSL((Math.random() - 0.5) * 0.04, 0, (Math.random() - 0.5) * 0.06);

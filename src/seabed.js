@@ -52,6 +52,24 @@ export function createSeabed() {
   return mesh;
 }
 
+// A large flat plane just below the top of the voxel seabed, extending
+// far past the reef. Its job is to fall off into fog so the edge of the
+// 40x40 voxel grid never reads as "floating slab on a table". Sat
+// slightly under the cube tops so individual cube faces still read.
+export function createSeabedExtender() {
+  const geo = new THREE.PlaneGeometry(400, 400);
+  geo.rotateX(-Math.PI / 2);
+  const mat = new THREE.MeshStandardMaterial({
+    color: palette.sandBase.clone().multiplyScalar(0.55),
+    roughness: 1.0,
+    metalness: 0.0,
+  });
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = -0.05;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
 // Snap a world-space point on the seabed to the centre of its voxel.
 // Returns null if the point is outside the reef.
 export function worldToVoxel(point) {

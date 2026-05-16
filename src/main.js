@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { palette, config } from './palette.js';
-import { createSeabed } from './seabed.js';
+import { createSeabed, createSeabedExtender } from './seabed.js';
 import { Coral } from './coral.js';
 import { InputHandler } from './input.js';
 import { createComposer } from './postprocessing.js';
@@ -58,6 +58,44 @@ controls.mouseButtons = {
   RIGHT:  THREE.MOUSE.PAN,
 };
 
+// skydome — vertical gradient so the background reads as water volume
+// instead of flat paper. ShaderMaterial doesn't auto-apply fog, which is
+// exactly what we want: the sky shows its full gradient regardless of
+// scene fog, while the rest of the scene still fades into fog naturally.
+const skyGeo = new THREE.SphereGeometry(90, 32, 24);
+const skyMat = new THREE.ShaderMaterial({
+  uniforms: {
+    uTop:     { value: palette.skyTop },
+    uHorizon: { value: palette.fog },
+    uDeep:    { value: palette.skyDeep },
+  },
+  vertexShader: /* glsl */ `
+    varying vec3 vDir;
+    void main() {
+      vDir = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }
+  `,
+  fragmentShader: /* glsl */ `
+    uniform vec3 uTop;
+    uniform vec3 uHorizon;
+    uniform vec3 uDeep;
+    varying vec3 vDir;
+    void main() {
+      float h = vDir.y;
+      vec3 col = (h >= 0.0)
+        ? mix(uHorizon, uTop,  smoothstep(0.0,  0.6, h))
+        : mix(uHorizon, uDeep, smoothstep(0.0, -0.5, h));
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `,
+  side: THREE.BackSide,
+  depthWrite: false,
+});
+const sky = new THREE.Mesh(skyGeo, skyMat);
+sky.frustumCulled = false;
+scene.add(sky);
+
 // lighting
 const sun = new THREE.DirectionalLight(palette.sun, 1.45);
 sun.position.set(18, 32, 12);
@@ -73,17 +111,24 @@ sun.shadow.bias = -0.0005;
 sun.shadow.normalBias = 0.02;
 scene.add(sun);
 
-const hemi = new THREE.HemisphereLight(palette.skyHemi, palette.groundHemi, 0.7);
+// Hemisphere reduced so cyan doesn't dominate every upward-facing surface.
+const hemi = new THREE.HemisphereLight(palette.skyHemi, palette.groundHemi, 0.5);
 scene.add(hemi);
 
-// gentle fill from the opposite side so shadowed coral doesn't go black
-const fill = new THREE.DirectionalLight(palette.skyHemi, 0.25);
-fill.position.set(-12, -4, -10);
+// Warm fill from above-behind to recover coral warmth on the shadow side.
+// Previously this lived below the horizon, illuminating nothing useful.
+const fill = new THREE.DirectionalLight(palette.fillWarm, 0.55);
+fill.position.set(-12, 8, -10);
 scene.add(fill);
 
 // seabed
 const seabed = createSeabed();
 scene.add(seabed);
+
+// extender plane: visually continues the seabed past the voxel grid edge,
+// fading into fog. Without this the 40x40 grid reads as a floating slab.
+const seabedExtender = createSeabedExtender();
+scene.add(seabedExtender);
 
 // corals
 const corals = [];
